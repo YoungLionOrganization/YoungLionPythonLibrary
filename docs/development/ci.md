@@ -19,15 +19,18 @@ fresh virtual environment. They **must not** call `setup.py` with the distro's
 preinstalled setuptools, because `pyproject.toml` is the authoritative source of
 build requirements.
 
-## `build-artifacts.yml` — release candidates
+## `build-artifacts.yml` — candidates and verified publication
 
-This workflow is manual (`workflow_dispatch`) and also runs for `v0.1*` tags. It
-never publishes to PyPI. Its first job is a release preflight gate that verifies:
+This workflow is manual (`workflow_dispatch`) and also runs for version tags.
+Matching tags publish automatically; manual runs publish only when
+`publish_release=true`. Its first job is a release preflight gate that verifies:
 
 1. a tag, when present, exactly matches `v<project.version>`;
 2. the obsolete pre-v0.1 automatic release workflow is absent;
 3. strict native compilation succeeds;
-4. smoke tests, pytest, syntax checks, and stub coverage pass.
+4. smoke tests, pytest, syntax checks, stub coverage and semantic typing pass;
+5. runtime/project versions agree and versioned release notes exist;
+6. publication is requested from the default branch or matching version tag.
 
 Only after preflight succeeds are the sdist and wheel matrices allowed to start.
 The final job downloads the component artifacts and produces one
@@ -49,6 +52,9 @@ features used by the extension.
 
 ## Release policy
 
-There is no automatic GitHub Release or PyPI upload in CI. The release bundle is
-an inspection artifact. Download it, verify its checksums and wheels, then upload
-only `pypi/` manually when the release is approved.
+After stable builds and bundle validation, publication stages a draft GitHub
+Release, uploads only unpublished stable files to PyPI with the organization
+`PYPI_API_TOKEN`, verifies every registry SHA-256 digest, then publishes the
+GitHub Release. Existing assets must have identical bytes; tags are never moved.
+See [Publishing and recovery](publishing.md). Artifact-only manual runs remain
+available with `publish_release=false`.

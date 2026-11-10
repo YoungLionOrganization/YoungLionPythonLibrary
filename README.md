@@ -1,4 +1,4 @@
-# YoungLion 0.1.1
+# YoungLion 0.1.2
 
 **YoungLion** is a dependency-light Python toolkit backed by a C++17 native extension. Version 0.1 focuses on four practical problems that appear repeatedly in desktop applications, bots, developer tools, local services, automation programs, and data-heavy Python applications:
 
@@ -9,7 +9,7 @@
 
 The package keeps a Python-friendly API while moving performance-sensitive traversal, serialization, searching, file primitives, and batch operations into C++ where that provides a real benefit.
 
-> **Development status:** `0.1.1` is still the active v0.1 development line. The repository is prepared for reproducible source/wheel builds, but this README does not imply that a particular commit has already been published to PyPI.
+> **Version 0.1.2:** restores missing compatibility helpers, adds bounded DDM display and comprehensive type contracts, and automates verified PyPI/GitHub releases.
 
 ---
 
@@ -26,7 +26,7 @@ The package keeps a Python-friendly API while moving performance-sensitive trave
 - General application search using inverted indexes, BM25, autocomplete, fuzzy metrics, structured filters, and multi-pattern matching.
 - Native/standard-library file operations for JSON, text, binary data, CSV, INI, properties, XML, practical YAML, backups, checksums, atomic writes, and directory workflows.
 - Application helpers: scheduler, script runner, logger, event bus, TTL cache, rate limiter, retry policy, circuit breaker, stopwatch, terminal renderer, text processor, e-mail manager, and transfer manager.
-- Multi-platform GitHub Actions build configuration that produces one downloadable release bundle instead of publishing to PyPI automatically.
+- Multi-platform GitHub Actions builds with automatic PyPI publishing and GitHub Releases after artifact verification.
 
 ---
 
@@ -43,7 +43,7 @@ python -m pip install YoungLion
 A C++17 compiler is required when building the native extension from source.
 
 ```bash
-git clone https://github.com/Cavanshirpro/YoungLionPythonLibrary.git
+git clone https://github.com/YoungLionOrganization/YoungLionPythonLibrary.git
 cd YoungLionPythonLibrary
 python -m pip install .
 ```
@@ -93,9 +93,14 @@ print(user.get_path("profile.name"))
 user.set_path("profile.age", 29)
 print(user.to_dict())
 print(user.to_json(indent=2))
+print(user.to_string(color=False, max_depth=4, max_items=20))
 ```
 
 DDM is deliberately dynamic: it is useful when your structure is known at runtime, evolves over time, comes from JSON-like data, or must remain easy to inspect and serialize.
+
+`str(user)` now displays a bounded hierarchy with model names and cycle markers.
+Use `to_json()` for JSON output. See the [display options](docs/api/datamodel.md#human-readable-display)
+and the [v0.0.9.9 compatibility review](docs/development/legacy-api-review.md).
 
 ## Typed DDM subclasses: model your own domain classes
 
@@ -438,6 +443,7 @@ Run the audit with:
 
 ```bash
 python tools/check_stub_coverage.py
+python tools/check_typing.py  # requires the dev extra (mypy)
 ```
 
 The structural audit complements—not replaces—mypy, Pyright, an IDE type engine, and real runtime tests. Read [docs/typing.md](docs/typing.md) and [Stub maintenance](docs/development/stub-maintenance.md).
@@ -465,14 +471,14 @@ Any benchmark number is workload-dependent. Use the included scripts under `benc
 
 # Building release artifacts on GitHub
 
-The repository workflow is designed to **build, test, and collect artifacts only**. It does not publish to PyPI and does not need a PyPI token.
+The distribution workflow builds and tests stable wheels plus an sdist, validates their contents and checksums, uploads to PyPI with the organization `PYPI_API_TOKEN`, and publishes a GitHub Release after registry verification. A matching version tag triggers publication automatically. Manual dispatch on `main` publishes only when `publish_release` is enabled; its default remains an artifact-only build.
 
 A release build ultimately assembles one downloadable artifact:
 
 ```text
-YoungLion-0.1.1-release-bundle/
+YoungLion-0.1.2-release-bundle/
 ├── pypi/
-│   ├── younglion-0.1.1.tar.gz
+│   ├── younglion-0.1.2.tar.gz
 │   └── *.whl
 ├── experimental/
 ├── checksums/
@@ -481,9 +487,9 @@ YoungLion-0.1.1-release-bundle/
 └── UPLOAD_TO_PYPI.md
 ```
 
-Only the stable files under `pypi/` are intended for the normal manual upload flow. Preview/interpreter/platform builds stay separated under `experimental/`.
+Only the stable files under `pypi/` are published automatically. Preview/interpreter/platform builds stay separated under `experimental/`. Partial publication can be recovered by rerunning failed jobs in the original workflow run; existing files must have matching SHA-256 digests.
 
-Typical manual release check:
+Manual recovery, when needed:
 
 ```bash
 cd pypi
@@ -491,7 +497,7 @@ python -m twine check *
 python -m twine upload *
 ```
 
-See [CI](docs/development/ci.md), [Release bundle](docs/development/release-bundle.md), [Packaging](docs/development/packaging.md), and [Manual PyPI publishing](docs/development/manual-pypi-publish.md).
+See [CI](docs/development/ci.md), [Release bundle](docs/development/release-bundle.md), [Packaging](docs/development/packaging.md), and [Publishing and recovery](docs/development/publishing.md).
 
 ---
 
@@ -527,7 +533,7 @@ Start at **[docs/index.md](docs/index.md)**. The documentation includes:
 - typing/stub maintenance;
 - memory/performance guides;
 - build, CI and packaging;
-- release bundle and manual PyPI upload;
+- release bundle, automated publishing and recovery;
 - security notes;
 - troubleshooting, FAQ and migration guidance;
 - generated public API signatures.

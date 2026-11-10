@@ -8,15 +8,20 @@ on:
         required: false
         default: false
         type: boolean
+      publish_release:
+        description: "Publish this version to PyPI and GitHub (main or matching version tag only)"
+        required: false
+        default: false
+        type: boolean
   push:
     tags:
-      - "v0.1*"
+      - "v[0-9]*.[0-9]*.[0-9]*"
 
 permissions:
   contents: read
 
 concurrency:
-  group: build-artifacts-${{ github.ref }}
+  group: build-artifacts-release
   cancel-in-progress: false
 
 env:
@@ -77,12 +82,26 @@ jobs:
               )
           print('Legacy workflow path is absent or safely disabled.')
           PY
+      - name: Verify release metadata and publication ref
+        env:
+          PUBLISH_RELEASE: ${{ startsWith(github.ref, 'refs/tags/') || inputs.publish_release == true }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: python tools/release.py metadata
+      - name: Verify publication credential is available
+        if: ${{ startsWith(github.ref, 'refs/tags/') || inputs.publish_release == true }}
+        env:
+          PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+        run: |
+          if [ -z "$PYPI_API_TOKEN" ]; then
+            echo "::error::Share the organization PYPI_API_TOKEN secret with this repository before publishing."
+            exit 1
+          fi
       - name: Strict native build and tests
         env:
           YOUNGLION_STRICT: "1"
           PYTHONPATH: src
         run: |
-          python -m pip install --upgrade pip setuptools wheel pytest
+          python -m pip install --upgrade pip setuptools wheel pytest "mypy>=1.15"
           python setup.py build_ext --inplace --force
           python -m compileall -q src tools tests
           python tools/smoke_test.py
@@ -90,6 +109,7 @@ jobs:
           if [[ -f tools/check_stub_coverage.py ]]; then
             python tools/check_stub_coverage.py
           fi
+          python tools/check_typing.py
 
   sdist:
     needs: preflight
@@ -159,6 +179,7 @@ jobs:
       - name: Build and test wheels
         env:
           CIBW_ARCHS: ${{ matrix.archs }}
+          CIBW_TEST_COMMAND: "python -m pytest -q {project}/tests"
         shell: bash
         run: |
           python -m cibuildwheel --output-dir wheelhouse
@@ -170,6 +191,7 @@ jobs:
           path: wheelhouse/*.whl
           if-no-files-found: error
           retention-days: 30
+
       - name: Upload experimental wheel component
         if: ${{ matrix.experimental }}
         uses: actions/upload-artifact@v7
@@ -178,6 +200,93 @@ jobs:
           path: wheelhouse/*.whl
           if-no-files-found: error
           retention-days: 14
+
+  stage-release:
+    name: Stage verified GitHub release
+    needs: [preflight, bundle]
+    if: ${{ always() && needs.preflight.result == 'success' && needs.bundle.result == 'success' && (startsWith(github.ref, 'refs/tags/') || inputs.publish_release == true) }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+      - uses: actions/download-artifact@v8
+        with:
+          name: YoungLion-${{ needs.preflight.outputs.version }}-release-bundle
+          path: release-bundle
+      - name: Create draft and attach verified distributions
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PUBLISH_RELEASE: "true"
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: python tools/release.py stage --bundle release-bundle
+
+  publish-pypi:
+    name: Publish stable distributions to PyPI
+    needs: [preflight, stage-release]
+    if: ${{ always() && needs.stage-release.result == 'success' }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+      - uses: actions/download-artifact@v8
+        with:
+          name: YoungLion-${{ needs.preflight.outputs.version }}-release-bundle
+          path: release-bundle
+      - name: Select unpublished files and verify existing hashes
+        id: pending
+        run: python tools/release.py pending --bundle release-bundle --output pending
+      - name: Require organization PyPI token
+        if: steps.pending.outputs.has_files == 'true'
+        env:
+          PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+        run: |
+          if [ -z "$PYPI_API_TOKEN" ]; then
+            echo "::error::PYPI_API_TOKEN must be shared with this repository in organization Actions secrets."
+            exit 1
+          fi
+      - name: Upload stable distributions
+        if: steps.pending.outputs.has_files == 'true'
+        uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # release/v1
+        with:
+          user: __token__
+          password: ${{ secrets.PYPI_API_TOKEN }}
+          packages-dir: pending/
+          attestations: false
+      - name: Verify the published PyPI files
+        run: python tools/release.py verify-pypi --bundle release-bundle
+
+  finalize-release:
+    name: Publish GitHub release
+    needs: [preflight, publish-pypi]
+    if: ${{ always() && needs.publish-pypi.result == 'success' }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+      - uses: actions/download-artifact@v8
+        with:
+          name: YoungLion-${{ needs.preflight.outputs.version }}-release-bundle
+          path: release-bundle
+      - name: Finalize after registry verification
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python tools/release.py finalize --bundle release-bundle
 
   experimental-extra-wheels:
     needs: preflight

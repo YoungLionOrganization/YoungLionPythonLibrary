@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "YoungLion"
-version = "0.1.1"
+version = "0.1.2"
 authors = [{ name = "Cavanşir Qurbanzadə", email = "cavanshirpro@gmail.com" }]
 maintainers = [{ name = "Cavanşir Qurbanzadə", email = "cavanshirpro@gmail.com" }]
 description = "Dependency-free native C++ accelerated Python toolkit for dynamic data models, fast file operations, ranked/fuzzy search and developer utilities."
@@ -43,15 +43,15 @@ classifiers = [
 dependencies = []
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "build>=1.2", "twine>=6"]
+dev = ["pytest>=8", "build>=1.2", "twine>=6", "mypy>=1.15"]
 
 [project.urls]
-Homepage = "https://github.com/Cavanshirpro/YoungLionPythonLibrary"
-Repository = "https://github.com/Cavanshirpro/YoungLionPythonLibrary.git"
-Documentation = "https://github.com/Cavanshirpro/YoungLionPythonLibrary/tree/main/docs"
-Changelog = "https://github.com/Cavanshirpro/YoungLionPythonLibrary/blob/main/Releases.md"
-Issues = "https://github.com/Cavanshirpro/YoungLionPythonLibrary/issues"
-"Source Code" = "https://github.com/Cavanshirpro/YoungLionPythonLibrary"
+Homepage = "https://github.com/YoungLionOrganization/YoungLionPythonLibrary"
+Repository = "https://github.com/YoungLionOrganization/YoungLionPythonLibrary.git"
+Documentation = "https://github.com/YoungLionOrganization/YoungLionPythonLibrary/tree/main/docs"
+Changelog = "https://github.com/YoungLionOrganization/YoungLionPythonLibrary/blob/main/Releases.md"
+Issues = "https://github.com/YoungLionOrganization/YoungLionPythonLibrary/issues"
+"Source Code" = "https://github.com/YoungLionOrganization/YoungLionPythonLibrary"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
@@ -79,6 +79,7 @@ build = [
 ]
 skip = []
 test-command = "python -c \"from YoungLion import DDM, File; from YoungLion.search import SearchIndex; assert DDM({'x': 1}).to_dict()['x'] == 1; assert SearchIndex(['native search']).search('native'); assert File is not None\""
+test-requires = ["pytest>=8"]
 test-skip = ["*-win_arm64"]
 build-verbosity = 1
 

@@ -9,6 +9,7 @@ YoungLion ships PEP 561 metadata and `.pyi` files so IDEs and static type checke
 - `YoungLion/search.pyi` — search stack.
 - `YoungLion/Colors.pyi` — color helpers.
 - `YoungLion/DataModel/*.pyi` — DDM core, variants, collections, models and cache/builder.
+- `YoungLion/DataModel/_parsing.pyi` — compatibility parsing errors and helpers.
 - `YoungLion/function/*.pyi` — File mixins and application utilities.
 - `YoungLion/py.typed` — PEP 561 marker.
 
@@ -31,3 +32,14 @@ python tools/check_stub_coverage.py
 The audit parses every stub and structurally compares maintained Python source modules with paired stubs. It catches a missing public class, function or direct public method. It is intentionally dependency-free so CI can run it before installing mypy/Pyright.
 
 A structural pass does not prove that every parameter annotation is semantically perfect. Review changed signatures manually and use a real type checker in applications that depend on strict typing.
+
+`python tools/check_typing.py` runs mypy over every stub and the application
+examples in `tests/typing/public_api.py`, then verifies that deliberately invalid
+calls in `tests/typing/invalid_api.py` are rejected with the expected diagnostics.
+The development extra supplies mypy. This check also runs in the dedicated CI
+typing job.
+
+Validation, memory and cache-report returns use private TypedDict definitions so
+editors can infer individual fields such as `report["complete"]: bool` and
+`validation["errors"]: list[str]`. These describe runtime dictionaries; the
+private schema names are not additional runtime classes to import.

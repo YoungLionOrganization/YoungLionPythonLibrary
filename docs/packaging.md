@@ -6,5 +6,6 @@
 
 - [Packaging](development/packaging.md)
 - [Manual Pypi Publish](development/manual-pypi-publish.md)
+- [Automated publishing and recovery](development/publishing.md)
 
 Start from [`docs/index.md`](index.md) for the complete documentation map.

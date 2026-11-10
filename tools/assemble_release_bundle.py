@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Assemble GitHub Actions component artifacts into one manual-PyPI bundle."""
+"""Assemble GitHub Actions component artifacts into one verified release bundle."""
 from __future__ import annotations
 
 import argparse
@@ -102,9 +102,11 @@ def main() -> int:
         "".join(f"{row['sha256']}  {row['file']}\n" for row in rows), encoding="utf-8"
     )
     (root / "UPLOAD_TO_PYPI.md").write_text(
-        f"""# YoungLion {version} — manual PyPI upload
+        f"""# YoungLion {version} — publication and manual recovery
 
-The `pypi/` directory is the complete stable upload set. Do **not** upload `experimental/` unless you intentionally decide to publish a preview build.
+The `pypi/` directory is the complete stable upload set. The release workflow publishes these files automatically using the organization PYPI_API_TOKEN, verifies registry hashes, and then publishes the GitHub Release. Do **not** upload `experimental/` as part of a stable release.
+
+For manual recovery only, verify the manifest and any existing PyPI file hashes before uploading:
 
 ```bash
 cd pypi

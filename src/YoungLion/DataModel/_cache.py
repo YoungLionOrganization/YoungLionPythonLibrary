@@ -51,46 +51,28 @@ class SmartCache:
         self._completed = 0
         self._filled = 0
 
-    def complete(self, raw_data: Mapping[str, Any]) -> Dict[str, Any]:
-        """Complete one sparse record from the cache template without mutating the caller's input.
+    def complete(self, raw_data: Mapping[str, Any], recursive: bool = True) -> Dict[str, Any]:
+        """Complete one record without mutating raw_data or the template.
         
-        Details
-        -------
-        This method belongs to :class:`SmartCache` and follows that class's storage, mutation, error and thread-safety semantics. It is documented at runtime so interactive users can understand the operation without consulting the external documentation site.
-        
-        Parameters
-        ----------
-        raw_data : Mapping[str, Any]
-            Sparse/source mapping to inspect or complete.
-        
-        Returns
-        -------
-        ``Dict[str, Any]`` result described by the method semantics.
+        With recursive=True (the default), nested dictionaries are merged using the native completion path. With recursive=False, an input nested value replaces the entire corresponding template value. Returned containers are independent copies. Statistics count completed records and missing top-level template keys.
         """
-        result = _native.cache_complete(self.template, dict(raw_data))
+        if recursive:
+            result = _native.cache_complete(self.template, dict(raw_data))
+        else:
+            from copy import deepcopy
+            result = deepcopy({**self.template, **raw_data})
         self._completed += 1
         self._filled += len(_native.cache_missing(self.template, dict(raw_data)))
         return result
 
     fill = complete
 
-    def complete_batch(self, records: Iterable[Mapping[str, Any]]) -> List[Dict[str, Any]]:
-        """Complete many sparse records using the same reusable template.
+    def complete_batch(self, records: Iterable[Mapping[str, Any]], recursive: bool = True) -> List[Dict[str, Any]]:
+        """Complete an iterable once and return a list of independent records.
         
-        Details
-        -------
-        This method belongs to :class:`SmartCache` and follows that class's storage, mutation, error and thread-safety semantics. It is documented at runtime so interactive users can understand the operation without consulting the external documentation site.
-        
-        Parameters
-        ----------
-        records : Iterable[Mapping[str, Any]]
-            Input records for structured/DDM collection indexing.
-        
-        Returns
-        -------
-        ``List[Dict[str, Any]]`` result described by the method semantics.
+        recursive is forwarded to complete() for each record. The default recursively fills missing dictionary fields; False selects top-level completion. Completion statistics are updated per record.
         """
-        return [self.complete(record) for record in records]
+        return [self.complete(record, recursive=recursive) for record in records]
 
     fill_batch = complete_batch
 
@@ -195,6 +177,18 @@ class SmartCache:
         """
         self._completed = 0
         self._filled = 0
+
+    def get_template(self) -> Dict[str, Any]:
+        """Return a deep independent copy of the current completion template."""
+        from copy import deepcopy
+        return deepcopy(self.template)
+
+    def clone_with_template(self, new_template: Mapping[str, Any]) -> "SmartCache":
+        """Create an independent cache with a new template and zero statistics."""
+        from copy import deepcopy
+        return SmartCache(deepcopy(dict(new_template)))
+
+    report = completion_report
 
 
 SC = SmartCache
@@ -361,6 +355,16 @@ def compare_ddms(ddm1: DDM, ddm2: DDM) -> Dict[str, Any]:
     """
     diff = ddm1.diff(ddm2)
     return {"equal": not diff, "differences": diff}
+
+
+def flatten_to_single_dict(*ddms: DDM) -> Dict[str, Any]:
+    """Flatten models into one dictionary with collision-free model prefixes.
+
+    Keys are ``ddm0_profile.name``, ``ddm1_profile.name``, etc. Empty input
+    returns {}. Each model uses the usual dotted-path flattening semantics.
+    """
+    return {f"ddm{index}_{key}": value for index, model in enumerate(ddms)
+            for key, value in model.to_flat_dict().items()}
 
 
 def batch_transform(ddms: Iterable[DDM], transformer: Callable[[DDM], Any]) -> List[Any]:

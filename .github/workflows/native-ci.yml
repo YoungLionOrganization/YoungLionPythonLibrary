@@ -74,6 +74,21 @@ jobs:
         if: ${{ hashFiles('tools/check_stub_coverage.py') != '' }}
         run: python tools/check_stub_coverage.py
 
+  typing:
+    name: Static type contracts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: python -m pip install "mypy>=1.15"
+      - run: python tools/check_stub_coverage.py
+      - run: python tools/check_typing.py
+
   strict-native:
     name: Strict compiler diagnostics / ${{ matrix.os }}
     strategy:

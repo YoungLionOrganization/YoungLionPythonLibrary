@@ -1330,6 +1330,11 @@ class FileTransferManager:
         return self.transfer_progress.get(transfer_id)
 
 
+    def check_transfer_status(self, transfer_id: str) -> Optional[str]:
+        """Compatibility alias for get_status(); unknown transfer IDs return None."""
+        return self.get_status(transfer_id)
+
+
 class TextProcessor:
     """Text analysis and transformation helper.
     
@@ -1706,10 +1711,38 @@ class TextProcessor:
         value = self._value(text); words = self.words(value)
         return {"characters": len(value), "characters_no_spaces": len(re.sub(r"\s", "", value)), "words": len(words), "unique_words": len({w.casefold() for w in words}), "sentences": self.sentence_count(value), "lines": self.line_count(value), "readability": self.readability_score(value)}
 
-# ---------------------------------------------------------------------------
-# General application infrastructure (zero third-party runtime dependencies)
-# ---------------------------------------------------------------------------
+    def find_keywords(self, text: str, keywords: Sequence[str]) -> dict[str, int]:
+        """Count case-insensitive, non-overlapping substring occurrences per keyword."""
+        folded = text.casefold()
+        return {word: folded.count(word.casefold()) for word in keywords}
 
+    def replace_text(self, text: str, old: str, new: str) -> str:
+        """Replace all occurrences of old in explicit text, preserving stored text."""
+        return text.replace(old, new)
+
+    def remove_stopwords(self, text: str, stopwords: Sequence[str]) -> str:
+        """Remove case-insensitive whitespace-delimited stopwords; normalize spaces."""
+        ignored = {word.casefold() for word in stopwords}
+        return " ".join(word for word in text.split() if word.casefold() not in ignored)
+
+    def unique_words(self, text: str) -> list[str]:
+        """Return sorted, case-folded unique tokens using the current tokenizer."""
+        return sorted({word.casefold() for word in self.words(text)})
+
+    def text_summary(self, text: str, max_sentences: int = 3) -> str:
+        """Return the first max_sentences sentences without changing stored text."""
+        return self.summarize(max_sentences, text)
+
+    def find_longest_word(self, text: str) -> str:
+        """Return the first longest token, or an empty string when text has no words."""
+        return max(self.words(text), key=len, default="")
+
+    def calculate_readability(self, text: str) -> float:
+        """Compatibility entry point for the approximate Flesch reading-ease score."""
+        return self.readability_score(text)
+
+
+# General application infrastructure (zero third-party runtime dependencies)
 _UTIL_MISSING = object()
 
 

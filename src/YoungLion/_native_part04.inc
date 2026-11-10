@@ -11,6 +11,8 @@
 }
 
 bool json_dump_obj(PyObject* obj, std::ostringstream& os, int indent, int level) {
+    RecursionGuard recursion;
+    if (!recursion.entered) return false;
     if (obj == Py_None) { os<<"null"; return true; }
     if (obj == Py_True) { os<<"true"; return true; }
     if (obj == Py_False) { os<<"false"; return true; }

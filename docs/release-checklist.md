@@ -6,6 +6,7 @@
 
 - [Release Bundle](development/release-bundle.md)
 - [Manual Pypi Publish](development/manual-pypi-publish.md)
+- [Automated publishing and recovery](development/publishing.md)
 - [Testing](guides/testing.md)
 
 Start from [`docs/index.md`](index.md) for the complete documentation map.

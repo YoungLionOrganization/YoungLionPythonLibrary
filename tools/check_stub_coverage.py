@@ -5,17 +5,23 @@ This is deliberately a structural check, not a full static type checker. It veri
 - every .pyi parses on the running Python,
 - each direct public class/function in the maintained Python modules exists in its paired .pyi,
 - each direct public method defined on those classes exists in the stub class,
+- aliases, special methods, exports and API docstrings are present,
+- properties and class/static methods preserve their calling conventions,
+- native functions without keyword support have positional-only signatures,
 - py.typed exists,
 - the two application-facing search aliases are declared in search.pyi.
 
 Run from the repository root:
     python tools/check_stub_coverage.py
+
+Run tools/check_typing.py separately for semantic checking with mypy.
 """
 from __future__ import annotations
 
 import ast
 from dataclasses import dataclass
 from pathlib import Path
+import re
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -27,6 +33,7 @@ PAIRS = [
     (SRC / "DataModel" / "_collections.py", SRC / "DataModel" / "_collections.pyi"),
     (SRC / "DataModel" / "_models.py", SRC / "DataModel" / "_models.pyi"),
     (SRC / "DataModel" / "_cache.py", SRC / "DataModel" / "_cache.pyi"),
+    (SRC / "DataModel" / "_parsing.py", SRC / "DataModel" / "_parsing.pyi"),
     (SRC / "function" / "_base.py", SRC / "function" / "_base.pyi"),
     (SRC / "function" / "_formats.py", SRC / "function" / "_formats.pyi"),
     (SRC / "function" / "_extra.py", SRC / "function" / "_extra.pyi"),
@@ -59,8 +66,16 @@ def surface(tree: ast.Module) -> ModuleSurface:
                 child.name
                 for child in node.body
                 if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef))
-                and not child.name.startswith("_")
+                and (not child.name.startswith("_") or child.name.startswith("__"))
             }
+            methods.update(
+                target.id
+                for child in node.body
+                if isinstance(child, ast.Assign) and isinstance(child.value, ast.Name)
+                and not child.value.id.startswith("_")
+                for target in child.targets if isinstance(target, ast.Name)
+                and (not target.id.startswith("_") or target.id.startswith("__"))
+            )
             classes[node.name] = methods
     return ModuleSurface(functions, classes)
 
@@ -108,6 +123,69 @@ def main() -> int:
             missing = methods - stub.classes[class_name]
             for method in sorted(missing):
                 errors.append(f"{source_path.relative_to(ROOT)}: {class_name}.{method} missing from {stub_path.name}")
+
+        source_tree, stub_tree = parse(source_path), parse(stub_path)
+        def audit_scope(source: ast.AST, stub: ast.AST, prefix: str = "") -> None:
+            stub_defs: dict[str, list[ast.AST]] = {}
+            for node in stub.body:
+                if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+                    stub_defs.setdefault(node.name, []).append(node)
+            for node in source.body:
+                if not isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+                    continue
+                matches = stub_defs.get(node.name, [])
+                if not matches:
+                    continue
+                label = f"{source_path.relative_to(ROOT)}: {prefix}{node.name}"
+                if not node.name.startswith("_") and not ast.get_docstring(matches[0]):
+                    errors.append(f"{label}: stub lacks API documentation")
+                if isinstance(node, ast.ClassDef):
+                    audit_scope(node, matches[0], prefix + node.name + ".")
+                    continue
+                is_overloaded = any(
+                    any(isinstance(d, ast.Name) and d.id == "overload" for d in m.decorator_list)
+                    for m in matches
+                )
+                source_decorators = {ast.unparse(d) for d in node.decorator_list}
+                for match in matches:
+                    stub_decorators = {ast.unparse(d) for d in match.decorator_list}
+                    for decorator in ("property", "classmethod", "staticmethod"):
+                        if (decorator in source_decorators) != (decorator in stub_decorators):
+                            errors.append(f"{label}: {decorator} differs between runtime and stub")
+                if is_overloaded:
+                    if any(not any(isinstance(d, ast.Name) and d.id == "overload" for d in m.decorator_list) for m in matches):
+                        errors.append(f"{label}: overload implementation must not appear in a stub")
+                    continue
+                def shape(args: ast.arguments) -> tuple:
+                    return (tuple(a.arg for a in args.posonlyargs), tuple(a.arg for a in args.args),
+                            tuple(a.arg for a in args.kwonlyargs),
+                            args.vararg.arg if args.vararg else None,
+                            args.kwarg.arg if args.kwarg else None)
+                if shape(node.args) != shape(matches[0].args):
+                    errors.append(f"{label}: runtime/stub parameter names or calling convention differ")
+        audit_scope(source_tree, stub_tree)
+
+    # Public exports must exist even if a runtime fallback has been removed.
+    for package in (SRC / "DataModel", SRC / "function"):
+        tree = parse(package / "__init__.py")
+        stub_names = declared_names(parse(package / "__init__.pyi"))
+        for node in tree.body:
+            if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "__all__" for t in node.targets):
+                for name in ast.literal_eval(node.value):
+                    if name not in stub_names:
+                        errors.append(f"{package.name}/__init__.pyi: missing public export {name}")
+
+    # Native methods without METH_KEYWORDS reject keyword arguments at runtime.
+    native_stub = parse(SRC / "_native.pyi")
+    native_defs = {n.name: n for n in native_stub.body if isinstance(n, ast.FunctionDef)}
+    method_table = (SRC / "_native_part07.inc").read_text(encoding="utf-8")
+    entries = re.findall(r'\{"(\w+)".*?,(METH_\w+(?:\|METH_\w+)*),"[^"]*"\}', method_table)
+    for name, flags in entries:
+        node = native_defs.get(name)
+        if node is None:
+            errors.append(f"_native.pyi: missing C++ callable {name}")
+        elif "METH_KEYWORDS" not in flags and node.args.args:
+            errors.append(f"_native.pyi: {name} must use positional-only parameters")
 
     search_stub = declared_names(parse(SRC / "search.pyi"))
     for alias in ("SearchEngine", "DDMIndex"):

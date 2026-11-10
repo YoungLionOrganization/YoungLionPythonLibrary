@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import platform
 import sys
+from pathlib import Path
 
 # std::filesystem is used by the native extension.  Older CPython macOS
 # installers may default to a 10.9 deployment target, where libc++ does not
@@ -61,6 +62,7 @@ setup(
         Extension(
             "YoungLion._native",
             sources=["src/YoungLion/_native.cpp"],
+            depends=sorted(str(path) for path in Path("src/YoungLion").glob("_native*.inc")),
             language="c++",
             extra_compile_args=compile_args,
             extra_link_args=link_args,

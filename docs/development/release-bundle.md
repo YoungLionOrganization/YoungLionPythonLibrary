@@ -8,7 +8,7 @@ After preflight, individual matrix jobs upload component artifacts. The final
 assembly produces one artifact with this layout:
 
 ```text
-YoungLion-0.1.1-release-bundle/
+YoungLion-0.1.2-release-bundle/
 ├── pypi/                 # stable wheels + exactly one sdist
 ├── experimental/         # preview targets; do not upload by default
 ├── checksums/
@@ -22,6 +22,9 @@ files, detects filename collisions, and writes SHA-256 metadata.
 `tools/validate_release_bundle.py` verifies file existence, sizes, hashes, stable
 wheel presence, and the single-sdist invariant.
 
-Only `pypi/` is intended for the normal manual PyPI upload. The workflows contain
-no PyPI token, `twine upload`, Trusted Publishing permission, or automatic GitHub
-Release step.
+Only `pypi/` is selected for automatic PyPI upload. The publishing jobs validate
+package metadata, current Python/type-stub resources, native wheel layout,
+artifact provenance and existing registry hashes before finalizing the GitHub
+Release. Credentials come from the organization `PYPI_API_TOKEN` secret.
+See [Publishing and recovery](publishing.md); manual artifact-only runs remain
+available.

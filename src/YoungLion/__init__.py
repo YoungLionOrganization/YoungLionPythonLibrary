@@ -69,10 +69,10 @@ therefore determined by the wheels produced for a release or by the availability
 of a compatible C++17 toolchain when installing from source.
 """
 
-__version__ = "0.1.1"
+__version__ = "0.1.2"
 __author__ = "Cavanşir Qurbanzadə"
 __author_email__ = "cavanshirpro@gmail.com"
-__url__ = "https://github.com/Cavanshirpro/YoungLionPythonLibrary"
+__url__ = "https://github.com/YoungLionOrganization/YoungLionPythonLibrary"
 
 author = {
     "name": "Cavanşir",

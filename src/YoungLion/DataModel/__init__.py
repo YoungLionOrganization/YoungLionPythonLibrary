@@ -30,21 +30,23 @@ All public APIs are documented in their runtime docstrings so ``help()``, IDLE,
 interactive shells and IDE hovers remain useful without opening external docs.
 """
 from ._core import DDM
+from ._parsing import ParseError, split_any, ensure_int_list, enable_ansi
 from ._models import Range, Vector, Timeline, Dataset, Size, Point, Color, Matrix, TreeDDM
 from ._variants import FrozenDDM, IdentityDDM, PackedDDM, SchemaDDM, DefaultDDM, LazyDDM, ViewDDM
 from ._collections import ListDDM, SetDDM, DictDDM, DDMTable, DDMCollectionOps, BatchPlan
 from ._cache import (
     SmartCache, SC, DDMBuilder, merge_ddms, compare_ddms, batch_transform,
     batch_filter, validate_ddm_batch, analyze_ddm_structure, get_ddm_size_info,
-    create_smart_cache, fast_complete, batch_complete_fast,
+    create_smart_cache, fast_complete, batch_complete_fast, flatten_to_single_dict,
 )
 
 __all__ = [
+    "ParseError", "split_any", "ensure_int_list", "enable_ansi",
     "DDM", "FrozenDDM", "IdentityDDM", "PackedDDM", "SchemaDDM", "DefaultDDM", "LazyDDM", "ViewDDM",
     "ListDDM", "SetDDM", "DictDDM", "DDMTable", "DDMCollectionOps", "BatchPlan",
     "Range", "Vector", "Timeline", "Dataset", "Size", "Point", "Color", "Matrix", "TreeDDM", "SmartCache", "SC", "DDMBuilder",
     "merge_ddms", "compare_ddms", "batch_transform", "batch_filter", "validate_ddm_batch",
-    "analyze_ddm_structure", "get_ddm_size_info", "create_smart_cache", "fast_complete", "batch_complete_fast",
+    "analyze_ddm_structure", "get_ddm_size_info", "create_smart_cache", "fast_complete", "batch_complete_fast", "flatten_to_single_dict",
 ]
 
 # Preserve less-used legacy public names without overriding native replacements.

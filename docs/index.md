@@ -1,6 +1,6 @@
 # YoungLion documentation
 
-This directory is the complete documentation hub for YoungLion 0.1.1.
+This directory is the complete documentation hub for YoungLion 0.1.2.
 
 ## Getting started
 - [Installation](installation.md)
@@ -45,6 +45,7 @@ This directory is the complete documentation hub for YoungLion 0.1.1.
 - [Updating main from a source ZIP](development/updating-main-from-source-zip.md)
 - [CI](development/ci.md)
 - [Release bundle](development/release-bundle.md)
+- [Automated publishing and recovery](development/publishing.md)
 - [Manual PyPI publishing](development/manual-pypi-publish.md)
 - [Packaging](development/packaging.md)
 - [Compatibility](development/compatibility.md)

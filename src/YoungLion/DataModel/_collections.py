@@ -1732,31 +1732,30 @@ class DDMCollectionOps:
         count = sum(1 for item in self._items_snapshot() if self._delete_path(item, path))
         self._invalidate_indexes([path]); return count
 
-    def search(self, *args: Any, **kwargs: Any):
-        """Search the current data/index using the query and options supported by this class.
-        
-        Details
-        -------
-        This method belongs to :class:`DDMCollectionOps` and follows that class's storage, mutation, error and thread-safety semantics. It is documented at runtime so interactive users can understand the operation without consulting the external documentation site.
+    def search(self, path: str, value: Any = None, *, op: str = "eq",
+               limit: Optional[int] = None, use_index: bool = True) -> List[Any]:
+        """Find records matching a dotted path and value.
         
         Parameters
         ----------
-        *args : Any
-            Arguments passed to a script/callable/subprocess.
-        **kwargs : Any
-            Keyword arguments forwarded to the target callable/helper.
+        path : str
+            Nested data path such as profile.name.
+        value : Any
+            Comparison value; ignored by existence operators.
+        op : str
+            Supported comparison operator, such as eq, ne, lt, contains.
+        limit : int | None
+            Maximum results; None returns every matching record.
+        use_index : bool
+            Use an available index when True; otherwise scan.
         
         Returns
         -------
-        Result collection/value produced by the operation.
-        
-        Notes
-        -----
-        Collection operations accept DDM-compatible nested records. Dotted paths such as ``profile.name`` traverse DDM instances and mapping-like nested values.
+        A list containing references to the original matching records. Uses the cached collection search engine when available. External mutations require refresh/invalidation as documented for DDMSearchEngine.
         """
         from ..search import DDMSearchEngine
         engine = getattr(self, "_search_engine", None) or DDMSearchEngine(self)
-        return engine.find(*args, **kwargs)
+        return engine.find(path, value, op=op, limit=limit, use_index=use_index)
 
     def build_search_index(self, *paths: str, **kwargs: Any):
         """Build and return a reusable DDMSearchEngine over this collection.
@@ -1838,7 +1837,12 @@ class ListDDM(DDMCollectionOps, MutableSequence[Any]):
         if self._search_engine is not None: self._search_engine.invalidate(paths)
     def __len__(self) -> int: return len(self._items)
     def __getitem__(self, index): return self._items[index]
-    def __setitem__(self, index, value): self._items[index] = _as_ddm(value); self._invalidate_indexes()
+    def __setitem__(self, index, value):
+        # Materialize before assigning: failed coercion/extended-slice length
+        # validation must not leave a partially replaced collection.
+        replacement = [_as_ddm(item) for item in value] if isinstance(index, slice) else _as_ddm(value)
+        self._items[index] = replacement
+        self._invalidate_indexes()
     def __delitem__(self, index): del self._items[index]; self._invalidate_indexes()
     def insert(self, index: int, value: Any) -> None:
         """Insert a record at the requested sequence position.

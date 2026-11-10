@@ -4,6 +4,56 @@ YoungLion follows semantic versioning for the public package line. Patch release
 may improve documentation, type information, packaging, diagnostics and bug fixes
 without intentionally changing the established public behavior of the minor line.
 
+## 0.1.2 — DDM display, legacy helpers, complete typing and automated releases — 2026-11-10
+
+- Reviewed v0.0.9.9 (`b3e902e`) against v0.1.1 (`8149638`). See
+  [the compatibility review](docs/development/legacy-api-review.md).
+- Added configurable, bounded `DDM.to_string()` with model names, nested
+  containers, cycle markers, optional ANSI colors, sorting and private-field
+  control. `str(DDM)` now uses this hierarchy; callers parsing the v0.1.1 string
+  output as JSON must use `to_json()` instead. `repr()` is bounded and uncolored.
+- Added CPython recursion accounting to native conversion/serialization/copy
+  operations so cyclic inputs raise `RecursionError` instead of exhausting the
+  native stack. Human-readable display handles cycles without raising.
+- Restored DDM chaining/selection, quoted CSV record and flat XML text helpers;
+  parsing helpers and `flatten_to_single_dict`; geometry/color conversions and
+  transformations; SmartCache helpers and shallow completion; legacy text and
+  transfer-status entry points. Current v0.1 return contracts remain in place.
+- Fixed `ListDDM` slice assignment, including extended slices and index
+  invalidation. Failed input conversion leaves the original records intact.
+- Fixed descending Range iteration and nonadvancing/nonfinite steps; restored
+  Dataset's documented population variance and configurable CSV delimiter.
+- Expanded all shipped stubs with API documentation, properties, operators,
+  context-manager methods, dataclass construction, aliases and exports. Added
+  literal-dependent collection returns, subclass-preserving fluent operations,
+  generic mapping results, callback parameter/return preservation and native
+  positional-only signatures.
+- Added semantic typing regression examples and a dedicated CI typing job;
+  strengthened the structural audit to cover exports, aliases, special methods,
+  decorators, calling conventions and native method coverage.
+- Track native `.inc` dependencies when deciding whether to rebuild the extension.
+- Automate PyPI publishing with the organization's `PYPI_API_TOKEN` and publish
+  GitHub Releases after the complete stable wheel/sdist set has been built,
+  tested, uploaded and verified against PyPI's SHA-256 digests. Manual artifact
+  builds remain available; experimental distributions are excluded from PyPI.
+- Add recoverable release staging: existing filenames are reused only when their
+  hashes match, release tags must resolve to the built commit, and draft GitHub
+  Releases become public only after registry verification succeeds.
+
+### Compatibility and validation
+
+The modern v0.1 constructors and established return shapes remain in place;
+this release restores useful missing helpers without reverting the native
+architecture. `str(DDM)` is now a readable hierarchy: code that previously parsed
+that output as JSON must use `to_json()`. Size/Point/Color provide concise string
+representations, while their `to_string()` uses the common model formatter.
+
+Validation covers the runtime regression suite, all sixteen public type stubs,
+positive and deliberately invalid type-checking examples, strict native compiler
+diagnostics, and installed-wheel behavior. Supported release targets remain
+CPython 3.10–3.14 on Linux, Windows and macOS. See
+[release automation](docs/development/publishing.md) for publishing and recovery.
+
 ## 0.1.1 — Runtime documentation and discoverability patch — 2026-08-22
 
 ### Release intent

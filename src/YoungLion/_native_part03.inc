@@ -23,6 +23,8 @@
 
 PyObject* deep_copy(PyObject* obj) {
     if (obj == Py_None || PyBool_Check(obj) || PyLong_Check(obj) || PyFloat_Check(obj) || PyUnicode_Check(obj) || PyBytes_Check(obj)) { Py_INCREF(obj); return obj; }
+    RecursionGuard recursion;
+    if (!recursion.entered) return nullptr;
     if (PyDict_Check(obj)) {
         PyObject* out=PyDict_New(); if(!out) return nullptr;
         PyObject *k,*v; Py_ssize_t pos=0;
@@ -38,8 +40,9 @@ PyObject* deep_copy(PyObject* obj) {
         for(Py_ssize_t i=0;i<n;++i){ PyObject* cv=deep_copy(PyTuple_GET_ITEM(obj,i)); if(!cv){Py_DECREF(out);return nullptr;} PyTuple_SET_ITEM(out,i,cv);} return out;
     }
     PyRef plain(to_plain(obj));
-    if (plain && plain.get()!=obj) return deep_copy(plain.get());
-    PyErr_Clear(); Py_INCREF(obj); return obj;
+    if (!plain) return nullptr;
+    if (plain.get()!=obj) return deep_copy(plain.get());
+    Py_INCREF(obj); return obj;
 }
 
 void json_escape(const std::string& in, std::ostringstream& os) {

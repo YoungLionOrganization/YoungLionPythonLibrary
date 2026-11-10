@@ -59,6 +59,8 @@ class Range(DDM):
         step : float (default: ``1.0``)
             Iteration step used by Range.
         """
+        if not all(math.isfinite(value) for value in (min_val, max_val, step)):
+            raise ValueError("range bounds and step must be finite")
         if max_val < min_val:
             raise ValueError("max_val must be >= min_val")
         if step == 0:
@@ -178,25 +180,23 @@ class Range(DDM):
         return random.uniform(self.min_val, self.max_val)
 
     def iterate(self) -> Iterator[float]:
-        """Iterate values from the lower bound toward the upper bound using the configured step.
-        
-        Details
-        -------
-        This method belongs to :class:`Range` and follows that class's storage, mutation, error and thread-safety semantics. It is documented at runtime so interactive users can understand the operation without consulting the external documentation site.
-        
-        Returns
-        -------
-        ``Iterator[float]`` result described by the method semantics.
+        """Iterate upward from min_val or downward from max_val for a negative step.
+
+        Bounds are inclusive within the existing 1e-12 endpoint tolerance.
+        Raise ValueError if floating-point precision prevents step from advancing
+        before the endpoint; this avoids an endless iterator for tiny steps.
         """
-        value = self.min_val
-        if self.step > 0:
-            while value <= self.max_val + 1e-12:
-                yield value
-                value += self.step
-        else:
-            while value >= self.max_val - 1e-12:
-                yield value
-                value += self.step
+        ascending = self.step > 0
+        value = self.min_val if ascending else self.max_val
+        endpoint = self.max_val if ascending else self.min_val
+        while (value <= endpoint + 1e-12 if ascending else value >= endpoint - 1e-12):
+            yield value
+            if value == endpoint:
+                return
+            next_value = value + self.step
+            if next_value == value:
+                raise ValueError("step is too small to advance at this magnitude")
+            value = next_value
 
     def subdivide(self, parts: int) -> List["Range"]:
         """Split the range into the requested number of contiguous subranges.
@@ -962,13 +962,14 @@ class Dataset(DDM):
         """
         vals = [float(row[column]) for row in self.rows if column in row and isinstance(row[column], (int, float))]
         if not vals:
-            return {"count": 0, "sum": 0.0, "mean": 0.0, "min": 0.0, "max": 0.0, "std": 0.0}
+            return {"count": 0, "sum": 0.0, "mean": 0.0, "min": 0.0, "max": 0.0, "std": 0.0, "variance": 0.0}
         return {
             "count": len(vals), "sum": sum(vals), "mean": statistics.fmean(vals),
             "min": min(vals), "max": max(vals), "std": statistics.pstdev(vals),
+            "variance": statistics.pvariance(vals),
         }
 
-    def to_csv(self) -> str:
+    def to_csv(self, sep: str = ",") -> str:
         """Serialize the represented data to CSV text.
         
         Details
@@ -980,7 +981,7 @@ class Dataset(DDM):
         ``str`` result described by the method semantics.
         """
         out = io.StringIO()
-        writer = csv.DictWriter(out, fieldnames=self.columns)
+        writer = csv.DictWriter(out, fieldnames=self.columns, delimiter=sep)
         writer.writeheader()
         writer.writerows(self.rows)
         return out.getvalue()
@@ -1133,6 +1134,43 @@ class Size(DDM):
         return self.width >= other.width and self.height >= other.height
 
 
+    def to_tuple(self) -> tuple[float, float]:
+        """Return (width, height), preserving the model's floating-point units."""
+        return self.width, self.height
+
+    def __str__(self) -> str:
+        """Return dimensions as 'widthxheight', omitting redundant decimal zeros."""
+        return f"{self.width:g}x{self.height:g}"
+
+    def scale_width(self, factor: float) -> "Size":
+        """Return a new size with width scaled and height preserved."""
+        return Size(self.width * factor, self.height)
+
+    def scale_height(self, factor: float) -> "Size":
+        """Return a new size with height scaled and width preserved."""
+        return Size(self.width, self.height * factor)
+
+    def fit_within(self, max_size: "Size") -> "Size":
+        """Fit inside max_size without enlarging, preserving aspect ratio."""
+        return self.fit_inside(max_size)
+
+    def clamp(self, min_size: "Size", max_size: "Size") -> "Size":
+        """Clamp dimensions independently; raise ValueError for inverted bounds."""
+        if min_size.width > max_size.width or min_size.height > max_size.height:
+            raise ValueError("minimum dimensions must not exceed maximum dimensions")
+        return Size(max(min_size.width, min(max_size.width, self.width)),
+                    max(min_size.height, min(max_size.height, self.height)))
+
+    def transpose(self) -> "Size":
+        """Return a new size with width and height exchanged."""
+        return Size(self.height, self.width)
+
+    def __mul__(self, factor: float) -> "Size":
+        return self.scale(factor)
+
+    __rmul__ = __mul__
+
+
 class Point(DDM):
     """2D coordinate model.
     
@@ -1253,6 +1291,57 @@ class Point(DDM):
         ``Vector`` result described by the method semantics.
         """
         return Vector([self.x, self.y])
+
+
+    def to_tuple(self) -> tuple[float, float]:
+        """Return (x, y) without rounding coordinates."""
+        return self.x, self.y
+
+    def __str__(self) -> str:
+        """Return coordinates as 'x,y', omitting redundant decimal zeros."""
+        return f"{self.x:g},{self.y:g}"
+
+    def is_within_distance(self, other: "Point", distance: float) -> bool:
+        """Return whether Euclidean distance to other is at most distance."""
+        return self.distance_to(other) <= distance
+
+    def rotate_around(self, center: "Point", angle_deg: float) -> "Point":
+        """Return a counterclockwise rotation around center, in degrees."""
+        angle = math.radians(angle_deg)
+        x, y = self.x - center.x, self.y - center.y
+        return Point(center.x + x * math.cos(angle) - y * math.sin(angle),
+                     center.y + x * math.sin(angle) + y * math.cos(angle))
+
+    def normalize(self) -> tuple[float, float]:
+        """Return unit coordinates; the zero point normalizes to (0.0, 0.0)."""
+        length = math.hypot(self.x, self.y)
+        return (self.x / length, self.y / length) if length else (0.0, 0.0)
+
+    def clamp(self, min_point: "Point", max_point: "Point") -> "Point":
+        """Clamp coordinates independently; reject inverted minimum/maximum bounds."""
+        if min_point.x > max_point.x or min_point.y > max_point.y:
+            raise ValueError("minimum coordinates must not exceed maximum coordinates")
+        return Point(max(min_point.x, min(max_point.x, self.x)),
+                     max(min_point.y, min(max_point.y, self.y)))
+
+    def reflect_x(self, origin_x: float = 0) -> "Point":
+        """Reflect the x coordinate about the vertical line x=origin_x."""
+        return Point(2 * origin_x - self.x, self.y)
+
+    def reflect_y(self, origin_y: float = 0) -> "Point":
+        """Reflect the y coordinate about the horizontal line y=origin_y."""
+        return Point(self.x, 2 * origin_y - self.y)
+
+    def __add__(self, other: "Point") -> "Point":
+        return self.translate(other.x, other.y)
+
+    def __sub__(self, other: "Point") -> "Point":
+        return self.translate(-other.x, -other.y)
+
+    def __mul__(self, factor: float) -> "Point":
+        return self.scale(factor)
+
+    __rmul__ = __mul__
 
 
 class Color(DDM):
@@ -1399,6 +1488,99 @@ class Color(DDM):
         ``float`` result described by the method semantics.
         """
         a, b = self.luminance(), other.luminance(); hi, lo = max(a,b), min(a,b); return (hi + 0.05) / (lo + 0.05)
+
+
+    def to_hex_lower(self, include_alpha: bool = False) -> str:
+        """Return lowercase #rrggbb or #rrggbbaa hex notation."""
+        return self.to_hex(include_alpha).lower()
+
+    def to_rgb(self) -> tuple[int, int, int]:
+        """Return integer red, green and blue channels in the range 0..255."""
+        return self.r, self.g, self.b
+
+    def to_rgba(self) -> tuple[int, int, int, int]:
+        """Return integer RGBA channels, including opacity in the range 0..255."""
+        return self.r, self.g, self.b, self.a
+
+    to_tuple = to_rgba
+    to_pillow = to_rgba
+    to_tuple_normalized = normalized
+
+    def to_int_rgb(self) -> int:
+        """Pack channels into an unsigned 24-bit 0xRRGGBB integer."""
+        return self.r << 16 | self.g << 8 | self.b
+
+    def to_int_rgba(self) -> int:
+        """Pack channels into an unsigned 32-bit 0xRRGGBBAA integer."""
+        return self.to_int_rgb() << 8 | self.a
+
+    def to_int_argb(self) -> int:
+        """Pack channels into an unsigned 32-bit 0xAARRGGBB integer."""
+        return self.a << 24 | self.to_int_rgb()
+
+    def to_css(self) -> str:
+        """Return CSS rgba(r,g,b,a), with normalized alpha to three decimals."""
+        return f"rgba({self.r},{self.g},{self.b},{self.a / 255:.3f})"
+
+    def __str__(self) -> str:
+        """Return #RRGGBB for opaque colors, otherwise #RRGGBBAA."""
+        return self.to_hex(include_alpha=not self.is_opaque())
+
+    def is_transparent(self) -> bool:
+        """Return whether alpha is zero (fully transparent)."""
+        return self.a == 0
+
+    def is_opaque(self) -> bool:
+        """Return whether alpha is 255 (fully opaque)."""
+        return self.a == 255
+
+    def brightness(self) -> float:
+        """Return perceived RGB brightness in 0..1; this is not WCAG luminance."""
+        return (0.299 * self.r + 0.587 * self.g + 0.114 * self.b) / 255
+
+    def lighten(self, amount: int = 30) -> "Color":
+        """Add amount to RGB channels, clipping to 0..255; preserve alpha."""
+        return Color(*(max(0, min(255, c + amount)) for c in self.to_rgb()), self.a)
+
+    def darken(self, amount: int = 30) -> "Color":
+        """Subtract amount from RGB channels, clipping to 0..255; preserve alpha."""
+        return self.lighten(-amount)
+
+    def invert(self) -> "Color":
+        """Invert RGB channels and preserve alpha in a new color."""
+        return Color(255 - self.r, 255 - self.g, 255 - self.b, self.a)
+
+    def grayscale(self) -> "Color":
+        """Return a perceived-brightness grayscale color with unchanged alpha."""
+        level = round(self.brightness() * 255)
+        return Color(level, level, level, self.a)
+
+    def adjust_alpha(self, amount: int) -> "Color":
+        """Add amount to opacity, clipping to 0..255, and preserve RGB."""
+        return Color(self.r, self.g, self.b, max(0, min(255, self.a + amount)))
+
+    def to_hsl(self) -> tuple[float, float, float]:
+        """Return hue in degrees, saturation and lightness in 0..1."""
+        import colorsys
+        h, l, s = colorsys.rgb_to_hls(*(c / 255 for c in self.to_rgb()))
+        return h * 360, s, l
+
+    def to_hsv(self) -> tuple[float, float, float]:
+        """Return hue in degrees, saturation and value in 0..1."""
+        import colorsys
+        h, s, v = colorsys.rgb_to_hsv(*(c / 255 for c in self.to_rgb()))
+        return h * 360, s, v
+
+    def saturate(self, amount: float = 0.1) -> "Color":
+        """Increase HSL saturation, clipping to 0..1; preserve hue/lightness/alpha."""
+        import colorsys
+        h, s, l = self.to_hsl()
+        rgb = colorsys.hls_to_rgb(h / 360, l, max(0.0, min(1.0, s + amount)))
+        return Color(*(round(c * 255) for c in rgb), self.a)
+
+    def desaturate(self, amount: float = 0.1) -> "Color":
+        """Decrease HSL saturation, clipping to 0..1; preserve alpha."""
+        return self.saturate(-amount)
 
 
 class Matrix(DDM):

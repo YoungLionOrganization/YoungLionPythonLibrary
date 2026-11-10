@@ -945,6 +945,117 @@ class DDM:
         writer.writerow(self.values())
         return out.getvalue()
 
+    def if_exists(self: T, key: str) -> Optional[T]:
+        """Return this model if a stored field exists, otherwise None.
+
+        Unlike hasattr(), this checks data fields rather than methods. A field
+        containing None still exists. No field is created by this operation.
+        """
+        return self if key in self.__dict__ else None
+
+    def ensure(self: T, key: str, default: Any = None) -> T:
+        """Insert a missing field and return self; preserve existing None values.
+
+        Uses the model's item assignment so immutable variants reject writes.
+        The default is stored by reference, matching setdefault().
+        """
+        if key not in self.__dict__:
+            self[key] = default
+        return self
+
+    def only(self, *keys: str) -> "DDM":
+        """Return a new DDM containing the requested existing fields."""
+        return self.filter_keys(keys)
+
+    def without(self, *keys: str) -> "DDM":
+        """Return a new DDM excluding the supplied fields; ignore absent names."""
+        return self.exclude_keys(keys)
+
+    def to_csv_line(self, sep: str = ",") -> str:
+        """Export one CSV record in field order, without a trailing record newline.
+
+        ``sep`` is a one-character delimiter. Python's CSV quoting preserves
+        delimiters, quotes and embedded newlines. None becomes an empty field;
+        other values use str(), as in csv.writer. Headers are not included.
+        """
+        out = io.StringIO(newline="")
+        csv.writer(out, delimiter=sep).writerow(self.values())
+        return out.getvalue()[:-2]
+
+    @staticmethod
+    def from_csv_line(csv_line: str, headers: Iterable[str], sep: str = ",") -> "DDM":
+        """Parse exactly one quoted CSV record; field values remain strings.
+
+        Raise ValueError for multiple records, duplicate headers or a header/
+        value count mismatch. Invalid CSV quoting raises csv.Error. Unlike the
+        historical split-based parser, embedded delimiters/newlines round-trip.
+        """
+        names = list(headers)
+        rows = list(csv.reader(io.StringIO(csv_line, newline=""), delimiter=sep, strict=True))
+        if not csv_line and not names:
+            rows = [[]]
+        if len(rows) != 1 or len(rows[0]) != len(names):
+            raise ValueError("expected one CSV record with one value per header")
+        if len(set(names)) != len(names):
+            raise ValueError("CSV headers must be unique")
+        return DDM(dict(zip(names, rows[0])))
+
+    def to_xml_like(self, tag: str = "item", indent: int = 0) -> str:
+        """Export fields as escaped text elements beneath an XML root.
+
+        This compatibility helper is flat: nested values become display text.
+        Element names must be simple XML names; invalid names raise ValueError.
+        ``indent`` is the starting level, with two spaces per level.
+        """
+        import re
+        from xml.sax.saxutils import escape
+        if not isinstance(indent, int) or indent < 0:
+            raise ValueError("indent must be a non-negative integer")
+        def name(value: str) -> str:
+            if not isinstance(value, str) or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_.-]*", value):
+                raise ValueError(f"invalid XML element name: {value!r}")
+            return value
+        pad = "  " * indent
+        root = name(tag)
+        lines = [f"{pad}<{root}>"]
+        for key, value in self.items():
+            key = name(key)
+            lines.append(f"{pad}  <{key}>{escape(str(value))}</{key}>")
+        lines.append(f"{pad}</{root}>")
+        return "\n".join(lines)
+
+    def to_string(self, indent: int = 2, *, color: Optional[bool] = None,
+                  max_depth: int = 8, max_items: int = 50,
+                  sort_keys: bool = False, include_private: bool = False) -> str:
+        """Return a readable hierarchy of model, mapping and container values.
+
+        DDM subclass names, string quoting and container boundaries remain
+        visible. Recursive references become ``<recursion: Type>``. Each
+        container shows at most ``max_items`` children; containers at
+        ``max_depth`` are abbreviated. Long scalar representations are bounded.
+        Shared children are rendered normally unless they form an active cycle.
+        No serialization, cloning or lazy-field evaluation is performed.
+
+        ``indent`` is the non-negative number of spaces per level. ``max_depth``
+        is between 0 and 100; ``max_items`` is non-negative. Invalid limits raise
+        TypeError/ValueError. ``sort_keys`` sorts mappings by key type and repr;
+        otherwise insertion order is preserved. Private DDM fields are hidden
+        unless ``include_private=True``; internal slots are never displayed.
+
+        ``color=None`` enables ANSI colors only for a terminal stdout when
+        NO_COLOR is absent and TERM is not dumb. Pass False for stable log/test
+        output or True to explicitly request color. Use to_json() for JSON.
+
+        Example::
+
+            model = DDM({"user": DDM({"name": "Leyla"}), "roles": ["admin"]})
+            print(model.to_string(color=False, max_depth=4))
+        """
+        from ._display import format_ddm
+        return format_ddm(self, indent=indent, color=color, max_depth=max_depth,
+                          max_items=max_items, sort_keys=sort_keys,
+                          include_private=include_private)
+
     def __getitem__(self, key: str) -> Any:
         try:
             return self.__dict__[key]
@@ -974,7 +1085,9 @@ class DDM:
         return False
 
     def __repr__(self) -> str:
-        return f"{self.__class__.__name__}({self.to_dict()!r})"
+        """Return a bounded, uncolored display, including for cyclic models."""
+        return DDM.to_string(self, color=False, max_depth=3, max_items=10)
 
     def __str__(self) -> str:
-        return _native.json_dumps(self, indent=2)
+        """Return the bounded hierarchical display; use to_json() for JSON text."""
+        return DDM.to_string(self)

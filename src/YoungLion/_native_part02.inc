@@ -20,6 +20,8 @@ PyObject* deep_copy(PyObject* obj);
 PyObject* to_plain(PyObject* obj);
 
 PyObject* get_public_dict(PyObject* obj) {
+    RecursionGuard recursion;
+    if (!recursion.entered) return nullptr;
     PyRef native_data(PyObject_GetAttrString(obj, "_native_data"));
     if (native_data && PyDict_Check(native_data.get())) {
         // Fast path for the very common flat DDM case. PyDict_Copy gives us a
@@ -70,5 +72,7 @@ PyObject* to_plain(PyObject* obj) {
     if (obj == Py_None || PyBool_Check(obj) || PyLong_Check(obj) || PyFloat_Check(obj) || PyUnicode_Check(obj) || PyBytes_Check(obj)) {
         Py_INCREF(obj); return obj;
     }
+    RecursionGuard recursion;
+    if (!recursion.entered) return nullptr;
     if (PyDict_Check(obj)) {
         PyObject* out=PyDict_New(); if(!out) return nullptr;
