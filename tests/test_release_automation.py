@@ -55,7 +55,8 @@ def test_metadata_agrees_with_runtime_and_notes():
 
 def test_notes_extract_only_the_requested_version(tmp_path):
     (tmp_path / "Releases.md").write_text(
-        "## 1.2.3 — New\nNew notes: [docs](docs/page.md)\n\n## 1.2.2 — Old\nOld notes\n")
+        "## 1.2.3 — New\nNew notes: [docs](docs/page.md)\n\n## 1.2.2 — Old\nOld notes\n",
+        encoding="utf-8")
     notes = release.release_notes(tmp_path, "1.2.3")
     assert "Old notes" not in notes
     assert "/blob/v1.2.3/docs/page.md" in notes

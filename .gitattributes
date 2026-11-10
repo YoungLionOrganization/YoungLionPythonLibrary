@@ -1,0 +1,9 @@
+# Keep packaged sources/stubs identical on Linux, Windows and macOS.
+*.py text eol=lf
+*.pyi text eol=lf
+*.toml text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.md text eol=lf
+*.cpp text eol=lf
+*.inc text eol=lf
