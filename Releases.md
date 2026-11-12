@@ -4,7 +4,7 @@ YoungLion follows semantic versioning for the public package line. Patch release
 may improve documentation, type information, packaging, diagnostics and bug fixes
 without intentionally changing the established public behavior of the minor line.
 
-## 0.1.2 — DDM display, legacy helpers, complete typing and automated releases — 2026-11-10
+## 0.1.2 — DDM display, legacy helpers, complete typing and automated releases — 2026-11-12
 
 - Reviewed v0.0.9.9 (`b3e902e`) against v0.1.1 (`8149638`). See
   [the compatibility review](docs/development/legacy-api-review.md).

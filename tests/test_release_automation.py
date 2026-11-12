@@ -143,3 +143,27 @@ def test_existing_github_assets_are_never_overwritten(tmp_path, monkeypatch):
     with pytest.raises(ValueError, match="bytes differ"):
         release.upload_assets(release.metadata(), "owner/repo", draft, [path])
     assert not calls
+
+
+def test_windows_repaired_initializer_preserves_original_module():
+    source = b'"""Package documentation."""\n__version__ = "0.1.2"\n'
+    bootstrap = (
+        "# start delvewheel patch\n"
+        "def _delvewheel_patch_1_13_0():\n"
+        "    import os\n"
+        "    if os.path.isdir(libs_dir := os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, 'younglion.libs'))):\n"
+        "        os.add_dll_directory(libs_dir)\n"
+        "\n"
+        "_delvewheel_patch_1_13_0()\n"
+        "del _delvewheel_patch_1_13_0\n"
+        "# end delvewheel patch\n\n"
+    ).encode()
+    repaired = source.replace(b'__version__', bootstrap + b'__version__', 1)
+    windows = "younglion-0.1.2-cp314-cp314-win_amd64.whl"
+    assert release.matching_resource("YoungLion/__init__.py", repaired, source, windows)
+    assert not release.matching_resource("YoungLion/__init__.py", repaired, source,
+                                         "younglion-0.1.2-cp314-cp314-manylinux_2_28_x86_64.whl")
+    assert not release.matching_resource("YoungLion/__init__.pyi", repaired, source, windows)
+    assert not release.matching_resource("YoungLion/__init__.py", repaired + b"modified = True\n", source, windows)
+    assert not release.matching_resource("YoungLion/__init__.py", repaired.replace(
+        b"os.add_dll_directory(libs_dir)", b"os.system('unexpected')"), source, windows)

@@ -68,6 +68,45 @@ def digest(path: Path) -> str:
     return result.hexdigest()
 
 
+def matching_resource(resource: str, packaged: bytes, source: bytes, wheel_name: str) -> bool:
+    """Require exact sources, allowing only the verified Windows DLL bootstrap.
+
+    Delvewheel adds a DLL-directory initializer to the package __init__.py.
+    Its generated block must match the known loader AST, and removing that
+    block must leave the original module's AST unchanged. Stubs and all other
+    Python modules continue to require byte-for-byte equality.
+    """
+    if packaged == source:
+        return True
+    if resource != "YoungLion/__init__.py" or not re.search(r"-(win32|win_amd64|win_arm64)\.whl$", wheel_name):
+        return False
+    try:
+        text = packaged.decode("utf-8")
+        blocks = list(re.finditer(r"^# start delvewheel patch\n(.*?)^# end delvewheel patch\n", text, re.M | re.S))
+        if len(blocks) != 1:
+            return False
+        block = blocks[0]
+        generated = ast.parse(block.group(1))
+        if not generated.body or not isinstance(generated.body[0], ast.FunctionDef):
+            return False
+        name = generated.body[0].name
+        if not re.fullmatch(r"_delvewheel_patch_\d+_\d+_\d+", name):
+            return False
+        expected = ast.parse(
+            f"def {name}():\n"
+            "    import os\n"
+            "    if os.path.isdir(libs_dir := os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, 'younglion.libs'))):\n"
+            "        os.add_dll_directory(libs_dir)\n"
+            f"{name}()\n"
+            f"del {name}\n")
+        if ast.dump(generated) != ast.dump(expected):
+            return False
+        original = text[:block.start()] + text[block.end():]
+        return ast.dump(ast.parse(original)) == ast.dump(ast.parse(source.decode("utf-8")))
+    except (UnicodeDecodeError, SyntaxError):
+        return False
+
+
 def distributions(bundle: Path, info: dict[str, str], sha: str | None = None) -> list[Path]:
     manifest = json.loads((bundle / "checksums/MANIFEST.json").read_text(encoding="utf-8"))
     if manifest["version"] != info["version"] or manifest["project"] != info["name"]:
@@ -97,7 +136,8 @@ def distributions(bundle: Path, info: dict[str, str], sha: str | None = None) ->
                              *(ROOT / "src/YoungLion").rglob("*.py")]
                 for source in resources:
                     resource = source.relative_to(ROOT / "src").as_posix()
-                    if resource not in names or archive.read(resource) != source.read_bytes():
+                    if resource not in names or not matching_resource(
+                            resource, archive.read(resource), source.read_bytes(), path.name):
                         raise ValueError(f"Missing/stale wheel resource: {resource}")
                 if "YoungLion/py.typed" not in names or any(name.endswith((".cpp", ".inc")) for name in names):
                     raise ValueError(f"Invalid wheel source/typing layout: {path.name}")

@@ -29,6 +29,12 @@ permission. No personal access token is required.
 6. A final job verifies the registry and staged assets again, then makes the
    GitHub Release public and marks it latest.
 
+Windows repair adds Delvewheel's DLL-directory bootstrap to `__init__.py`.
+Validation recognizes only that known loader structure and requires the remaining
+module AST to match the source. All `.pyi` files and other Python modules remain
+byte-for-byte checked; registry and release-asset hashes always cover the exact
+final wheel bytes, including the loader.
+
 A normal manual run with `publish_release=false` builds artifacts without
 publishing. Publication from another branch is rejected. A tag must exactly match
 the project version. Release jobs use the source commit from the triggering event
